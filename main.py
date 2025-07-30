@@ -11,7 +11,10 @@ class DateRenamerApp:
         self.folder_path = tk.StringVar()
         self.files = []
         self.current_file_index = 0
-
+        # Preview window and label references
+        self.preview_win = None
+        self.preview_label = None
+        self.preview_imgtk = None
         # Date dropdown
         now = datetime.now()
         self.month_var = tk.StringVar(value=str(now.month))
@@ -50,6 +53,8 @@ class DateRenamerApp:
         self.extra_text_var = tk.StringVar()
         self.extra_entry = tk.Entry(self.file_frame, textvariable=self.extra_text_var, width=30)
         self.extra_entry.pack(pady=5)
+        # Bind Enter key to rename function
+        self.extra_entry.bind('<Return>', lambda event: self.rename_current_file())
         self.rename_button = tk.Button(self.file_frame, text="Rename File", command=self.rename_current_file)
         self.rename_button.pack(pady=5)
         # Add Preview Image button
@@ -86,6 +91,8 @@ class DateRenamerApp:
         self.file_label.config(text=f"File: {current_file}\nNew name: {date_str}[your text][original extension]")
         self.extra_text_var.set("")
         self.extra_entry.focus_set()
+        # Automatically show preview if it's an image
+        self.preview_image(auto=True)
 
     def rename_current_file(self):
         folder = self.folder_path.get()
@@ -106,7 +113,7 @@ class DateRenamerApp:
         self.current_file_index += 1
         self.show_current_file()
 
-    def preview_image(self):
+    def preview_image(self, auto=False):
         folder = self.folder_path.get()
         if not self.files or self.current_file_index >= len(self.files):
             return
@@ -114,7 +121,14 @@ class DateRenamerApp:
         file_path = os.path.join(folder, current_file)
         supported_exts = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp')
         if not current_file.lower().endswith(supported_exts):
-            messagebox.showerror("Not an image", f"File extension not supported for preview: {current_file}")
+            # If not an image, close preview window if open (for auto mode)
+            if auto and self.preview_win is not None:
+                self.preview_win.destroy()
+                self.preview_win = None
+                self.preview_label = None
+                self.preview_imgtk = None
+            if not auto:
+                messagebox.showerror("Not an image", f"File extension not supported for preview: {current_file}")
             return
         try:
             with open(file_path, 'rb') as f:
@@ -124,18 +138,34 @@ class DateRenamerApp:
             img.thumbnail(max_size, Image.LANCZOS if hasattr(Image, 'LANCZOS') else Image.ANTIALIAS)
             img_tk = ImageTk.PhotoImage(img)
         except UnidentifiedImageError:
-            messagebox.showerror("Not an image", f"Cannot preview this file as an image. The file may be corrupted or not a real image.")
+            if not auto:
+                messagebox.showerror("Not an image", f"Cannot preview this file as an image. The file may be corrupted or not a real image.")
             return
         except Exception as e:
-            messagebox.showerror("Not an image", f"Cannot preview this file as an image.\n{e}")
+            if not auto:
+                messagebox.showerror("Not an image", f"Cannot preview this file as an image.\n{e}")
             return
-        # Create floating window
-        preview_win = tk.Toplevel(self.root)
-        preview_win.title(f"Preview: {current_file}")
-        label = tk.Label(preview_win, image=img_tk)
-        label.image = img_tk
-        label.pack()
-        preview_win.focus()
+        # If preview window doesn't exist, create it
+        if self.preview_win is None or not self.preview_win.winfo_exists():
+            self.preview_win = tk.Toplevel(self.root)
+            self.preview_win.title(f"Preview: {current_file}")
+            self.preview_label = tk.Label(self.preview_win, image=img_tk)
+            self.preview_label.image = img_tk
+            self.preview_label.pack()
+            # When preview window is closed, clear references
+            def on_close():
+                self.preview_win.destroy()
+                self.preview_win = None
+                self.preview_label = None
+                self.preview_imgtk = None
+            self.preview_win.protocol("WM_DELETE_WINDOW", on_close)
+        else:
+            self.preview_win.title(f"Preview: {current_file}")
+            self.preview_label.configure(image=img_tk)
+            self.preview_label.image = img_tk
+        self.preview_imgtk = img_tk  # Keep reference to avoid garbage collection
+        # Refocus the text entry after preview updates
+        self.extra_entry.focus_set()
 
 if __name__ == "__main__":
     root = tk.Tk()
