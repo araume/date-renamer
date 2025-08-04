@@ -2,3 +2,4 @@ main.spec
 myvenv/
 build/
 dist/
+venv/
